@@ -38,12 +38,14 @@ def handle_command_line_options():
 
 def generate_key_sub_dictionary():
 	global cmd_options, input_file_name, salt
-	global key_sub_dict
+	global key_sub_dict, io_port_mapping
 
 	input_file = open(input_file_name, 'r')
 
 	key_sub_dict = {}
+	io_port_mapping = []
 	n=0
+	within_io_port_mapping = True
 	while True:
 		n += 1
 		line = input_file.readline()
@@ -51,12 +53,13 @@ def generate_key_sub_dictionary():
 			if cmd_options.debug:
 				print("Reached EOF, number of lines: {}".format(n))
 			break
-
 		if len(line) >= 2:
 			if line[:2] == "--":
 				if cmd_options.debug:
 					print("Line number {} is comment line".format(n))
 				continue
+		if line.lower().__contains__("architecture"):
+			within_io_port_mapping = False
 
 		word=""
 		in_str=False
@@ -80,10 +83,16 @@ def generate_key_sub_dictionary():
 					if reserved_words.__contains__(word.lower()) == False:
 						if key_sub_dict.__contains__(word) == False:
 							key_sub_dict[word] = "s_"+hashlib.sha256(bytes(word, 'UTF-8') + bytes(salt, 'UTF-8')).hexdigest()
+							if within_io_port_mapping:
+								io_port_mapping.append(word)
 
 							if cmd_options.debug:
 								print("Found new word: {}, hash: {}".format(word, key_sub_dict[word]))
 				word=""
+
+
+	if cmd_options.debug:
+		print("IO Ports: {}".format(io_port_mapping))
 
 	input_file.close()
 
@@ -259,8 +268,109 @@ def get_num_of_process_blocks():
 
 	return int(num_process_blocks/2), line_start_indexes, line_stop_indexes
 
+def generate_encapsulation_file():
+	global io_port_mapping, key_sub_dict
+	global cmd_options, input_file_name, salt
+
+	input_file = open(input_file_name, "r")
+	output_file = open(input_file_name[:-4]+"_encap.vhd", "w")
+
+	while True:
+		line = input_file.readline()
+		if line == '':
+			break
+		if len(line) >= 2:
+			if line[:2] == "--":
+				continue
+
+		output_file.write(line)
+		if line.lower().__contains__("architecture"):
+			output_file.write("\n")
+			break
+
+	start_print = False
+	input_file2 = open(input_file_name[:-4]+"_pass1.vhd", "r")
+	while True:
+		line = input_file2.readline()
+		if line == '':
+			break
+		if len(line) >= 2:
+			if line[:2] == "--":
+				continue
+
+		if line.lower().__contains__("entity"):
+			line = line.lower().replace("entity", "component")
+			start_print = True
+		if line.lower().__contains__("end"):
+			output_file.write("end component;\n")
+			break
+		if start_print:
+			output_file.write(line)
+
+	output_file.write("\n")
+	output_file.write("begin\n")
+	output_file.write("\n")
+
+	start_print = False
+	input_file2.seek(0)
+	n=0
+	while True:
+		line = input_file2.readline()
+		if line == '':
+			break
+		if len(line) >= 2:
+			if line[:2] == "--":
+				continue
+
+		if line.lower().__contains__("entity"):
+			line = line.lower().replace("entity", "inst : ")
+			line = line.lower().replace("is", "")
+			output_file.write(line)
+			start_print = True
+			continue
+		if line.lower().__contains__("end"):
+			output_file.write(");\n")
+			break
+		line = line.lower().replace("port", "port map")
+
+		line_is_only_blank = True
+		for c in line.lower():
+			if c == '\t':
+				continue
+			if c == ' ':
+				continue
+			if c == '\n':
+				continue
+			line_is_only_blank = False
+			break
+		if line_is_only_blank:
+			continue
+
+		try:
+			if n != 0:
+				new_line = ",\n"
+			else:
+				new_line = ""
+			index_of_colon = line.index(":")
+			new_line += line[:index_of_colon]
+			new_line += " => "
+			new_line += io_port_mapping[n+1]
+			n += 1
+			if start_print:
+				output_file.write(new_line)
+		except Exception:
+			if start_print:
+				output_file.write(line)
+
+	output_file.write("\nend Behavioral;")
+
+	input_file.close()
+	input_file2.close()
+	output_file.close()
+
 if __name__ == '__main__':
 	handle_command_line_options()
 	generate_key_sub_dictionary()
 	substitue_key_for_hashes()
 	swap_process_blocks()
+	generate_encapsulation_file()
