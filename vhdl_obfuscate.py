@@ -268,6 +268,53 @@ def get_num_of_process_blocks():
 
 	return int(num_process_blocks/2), line_start_indexes, line_stop_indexes
 
+def remove_whitespace():
+	global cmd_options, input_file_name, salt
+	global key_sub_dict
+
+	num_process_blocks, line_start_indexes, line_stop_indexes = get_num_of_process_blocks()
+	proc_block_order = get_process_block_ordering(salt, num_process_blocks)
+
+	input_file = open(input_file_name[:-4]+"_pass2.vhd", "r")
+	output_file = open(input_file_name[:-4]+"_pass3.vhd", "w")
+
+	file_contents = input_file.read()
+	prev_char = ''
+	num_chars = 0
+	for c in file_contents:
+		if c == '\n':
+			if prev_char != ' ':
+				output_file.write(' ')
+				prev_char = ' '
+				num_chars += 1
+		elif c == '\r':
+			if prev_char != ' ':
+				output_file.write(' ')
+				prev_char = ' '
+				num_chars += 1
+		elif c == '\t':
+			if prev_char != ' ':
+				output_file.write(' ')
+				prev_char = ' '
+				num_chars += 1
+		elif c == ' ':
+			if prev_char != ' ':
+				output_file.write(' ')
+				prev_char = ' '
+				num_chars += 1
+		else:
+			output_file.write(c)
+			prev_char = c
+			num_chars += 1
+
+		if num_chars > 300:
+			if c == ';':
+				output_file.write('\n')
+				num_chars = 0
+
+	input_file.close()
+	output_file.close()
+
 def generate_encapsulation_file():
 	global io_port_mapping, key_sub_dict
 	global cmd_options, input_file_name, salt
@@ -373,4 +420,5 @@ if __name__ == '__main__':
 	generate_key_sub_dictionary()
 	substitue_key_for_hashes()
 	swap_process_blocks()
+	remove_whitespace()
 	generate_encapsulation_file()
