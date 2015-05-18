@@ -82,7 +82,8 @@ def generate_key_sub_dictionary():
 				if len(word) != 0:
 					if reserved_words.__contains__(word.lower()) == False:
 						if key_sub_dict.__contains__(word) == False:
-							key_sub_dict[word] = "s_"+hashlib.sha256(bytes(word, 'UTF-8') + bytes(salt, 'UTF-8')).hexdigest()
+							hash_val = hashlib.sha256(bytes(word, 'UTF-8') + bytes(salt, 'UTF-8')).hexdigest()
+							key_sub_dict[word] = "s_" + hash_val[:int(int(hash_val[0:2], 16)/4) + 3]
 							if within_io_port_mapping:
 								io_port_mapping.append(word)
 
@@ -307,7 +308,7 @@ def remove_whitespace():
 			prev_char = c
 			num_chars += 1
 
-		if num_chars > 300:
+		if num_chars > 500:
 			if c == ';':
 				output_file.write('\n')
 				num_chars = 0
