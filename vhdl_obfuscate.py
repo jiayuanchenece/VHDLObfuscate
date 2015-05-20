@@ -152,7 +152,7 @@ def substitue_key_for_hashes():
 	input_file.close()
 	output_file.close()
 
-def swap_process_blocks():
+def remove_all_comments():
 	global cmd_options, input_file_name, salt
 	global key_sub_dict
 
@@ -161,6 +161,33 @@ def swap_process_blocks():
 
 	input_file = open(input_file_name[:-4]+"_pass1.vhd", "r")
 	output_file = open(input_file_name[:-4]+"_pass2.vhd", "w")
+
+	while True:
+		line = input_file.readline()
+		if line == '':
+			break
+		if len(line) >= 2:
+			if line[:2] == "--":
+				continue
+
+		if line.__contains__("--"):
+			comment_index = line.index("--")
+			line = line[:comment_index]
+
+		output_file.write(line)
+
+	input_file.close()
+	output_file.close()			
+
+def swap_process_blocks():
+	global cmd_options, input_file_name, salt
+	global key_sub_dict
+
+	num_process_blocks, line_start_indexes, line_stop_indexes = get_num_of_process_blocks()
+	proc_block_order = get_process_block_ordering(salt, num_process_blocks)
+
+	input_file = open(input_file_name[:-4]+"_pass2.vhd", "r")
+	output_file = open(input_file_name[:-4]+"_pass3.vhd", "w")
 	process_block=0
 	in_process_block=False
 	while True:
@@ -175,7 +202,7 @@ def swap_process_blocks():
 			if not in_process_block:
 				swap_process_block_start = line_start_indexes[proc_block_order[process_block]]
 				swap_process_block_stop = line_stop_indexes[proc_block_order[process_block]]
-				input_file2 = open(input_file_name[:-4]+"_pass1.vhd", 'r')
+				input_file2 = open(input_file_name[:-4]+"_pass2.vhd", 'r')
 				i = 1
 				while i < swap_process_block_start:
 					input_file2.readline()
@@ -226,7 +253,7 @@ def get_num_of_process_blocks():
 	global cmd_options, input_file_name, salt
 	global key_sub_dict
 
-	input_file = open(input_file_name[:-4]+"_pass1.vhd", "r")
+	input_file = open(input_file_name[:-4]+"_pass2.vhd", "r")
 
 	num_process_blocks=0
 	line_start_indexes=[]
@@ -276,8 +303,8 @@ def remove_whitespace():
 	num_process_blocks, line_start_indexes, line_stop_indexes = get_num_of_process_blocks()
 	proc_block_order = get_process_block_ordering(salt, num_process_blocks)
 
-	input_file = open(input_file_name[:-4]+"_pass2.vhd", "r")
-	output_file = open(input_file_name[:-4]+"_pass3.vhd", "w")
+	input_file = open(input_file_name[:-4]+"_pass3.vhd", "r")
+	output_file = open(input_file_name[:-4]+"_pass4.vhd", "w")
 
 	file_contents = input_file.read()
 	prev_char = ''
@@ -308,7 +335,7 @@ def remove_whitespace():
 			prev_char = c
 			num_chars += 1
 
-		if num_chars > 500:
+		if num_chars > 200:
 			if c == ';':
 				output_file.write('\n')
 				num_chars = 0
@@ -420,6 +447,7 @@ if __name__ == '__main__':
 	handle_command_line_options()
 	generate_key_sub_dictionary()
 	substitue_key_for_hashes()
+	remove_all_comments()
 	swap_process_blocks()
 	remove_whitespace()
 	generate_encapsulation_file()
