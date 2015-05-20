@@ -83,7 +83,7 @@ def generate_key_sub_dictionary():
 					if reserved_words.__contains__(word.lower()) == False:
 						if key_sub_dict.__contains__(word) == False:
 							hash_val = hashlib.sha256(bytes(word, 'UTF-8') + bytes(salt, 'UTF-8')).hexdigest()
-							key_sub_dict[word] = "s_" + hash_val[:int(int(hash_val[0:2], 16)/4) + 3]
+							key_sub_dict[word] = "s_" + hash_val[:int(int(hash_val[0:2], 16)/4) + 10]
 							if within_io_port_mapping:
 								io_port_mapping.append(word)
 
@@ -102,7 +102,7 @@ def substitue_key_for_hashes():
 	global key_sub_dict
 
 	input_file = open(input_file_name, 'r')
-	output_file = open(input_file_name[:-4]+"_pass1.vhd", "w")
+	output_file = open(input_file_name[:-4]+"_pass0.vhd", "w")
 
 	n=0
 	while True:
@@ -159,8 +159,8 @@ def remove_all_comments():
 	num_process_blocks, line_start_indexes, line_stop_indexes = get_num_of_process_blocks()
 	proc_block_order = get_process_block_ordering(salt, num_process_blocks)
 
-	input_file = open(input_file_name[:-4]+"_pass1.vhd", "r")
-	output_file = open(input_file_name[:-4]+"_pass2.vhd", "w")
+	input_file = open(input_file_name[:-4]+"_pass0.vhd", "r")
+	output_file = open(input_file_name[:-4]+"_pass1.vhd", "w")
 
 	while True:
 		line = input_file.readline()
@@ -173,11 +173,61 @@ def remove_all_comments():
 		if line.__contains__("--"):
 			comment_index = line.index("--")
 			line = line[:comment_index]
+			line += "\n"
 
 		output_file.write(line)
 
 	input_file.close()
-	output_file.close()			
+	output_file.close()
+
+def move_non_process_blocks_to_end():
+	global cmd_options, input_file_name, salt
+	global key_sub_dict
+
+	num_process_blocks, line_start_indexes, line_stop_indexes = get_num_of_process_blocks()
+	proc_block_order = get_process_block_ordering(salt, num_process_blocks)
+
+	input_file = open(input_file_name[:-4]+"_pass1.vhd", "r")
+	output_file = open(input_file_name[:-4]+"_pass2.vhd", "w")
+
+	non_proc_data=""
+
+	after_begin=False
+	in_process_block=False
+	while True:
+		line = input_file.readline()
+		if line == '':
+			break
+		if len(line) >= 2:
+			if line[:2] == "--":
+				continue
+
+		if line.lower().__contains__("begin"):
+			after_begin = True
+			output_file.write(line)
+			continue
+
+		if after_begin:
+			if line.lower().__contains__("behavioral"):
+				output_file.write(non_proc_data)
+				output_file.write("\n")
+				output_file.write(line)
+				break
+			if line.__contains__("process"):
+				in_process_block = not in_process_block
+				if not in_process_block:
+					output_file.write(line)
+					continue
+			if in_process_block:
+				output_file.write(line)
+				continue
+
+			non_proc_data += line
+		else:
+			output_file.write(line)
+
+	input_file.close()
+	output_file.close()
 
 def swap_process_blocks():
 	global cmd_options, input_file_name, salt
@@ -296,7 +346,7 @@ def get_num_of_process_blocks():
 
 	return int(num_process_blocks/2), line_start_indexes, line_stop_indexes
 
-def remove_whitespace():
+def merge_process_blocks():
 	global cmd_options, input_file_name, salt
 	global key_sub_dict
 
@@ -305,6 +355,95 @@ def remove_whitespace():
 
 	input_file = open(input_file_name[:-4]+"_pass3.vhd", "r")
 	output_file = open(input_file_name[:-4]+"_pass4.vhd", "w")
+
+	merge_hash = hashlib.sha512(bytes("hailhydra", 'UTF-8') + bytes(salt, 'UTF-8')).hexdigest()
+
+	if cmd_options.debug:
+		print("Merge hash: {}".format(merge_hash))
+
+	i=0
+	after_begin=False
+	in_process_block=False
+	while True:
+		line = input_file.readline()
+		if line == '':
+			break
+		if len(line) >= 2:
+			if line[:2] == "--":
+				continue
+		if line.lower().__contains__("begin"):
+			after_begin = True
+			output_file.write(line)
+			continue
+
+		if after_begin:
+			if line.lower().__contains__("behavioral"):
+				output_file.write("\n")
+				output_file.write(line)
+				break
+			if not in_process_block:
+				if line.lower().__contains__("process"):
+					process_trigger = line.lower().replace("process", "")
+					process_trigger = process_trigger.lower().replace("(", "")
+					process_trigger = process_trigger.lower().replace(")", "")
+					process_trigger = process_trigger.lower().replace("\t", "")
+					in_process_block = True
+					output_file.write(line)
+					continue
+				output_file.write(line)
+			if in_process_block:
+				if line.lower().__contains__("end process"):	
+					in_process_block = False
+					if int(merge_hash[i], 16) >= 7: 
+						if cmd_options.debug:
+							print("Merging")
+						line = input_file.readline()
+						if line.lower().__contains__("process"):
+							process_trigger_next = line.lower().replace("process", "")
+							process_trigger_next = process_trigger_next.lower().replace("(", "")
+							process_trigger_next = process_trigger_next.lower().replace(")", "")
+							process_trigger_next = process_trigger_next.lower().replace("\t", "")
+							if process_trigger == process_trigger_next:
+								while True:
+									if line.lower().__contains__("begin"):
+										line = line.lower().replace("begin", "")
+										output_file.write(line)
+										break
+									line = input_file.readline()
+								in_process_block = True # We are now in a process block
+							else:
+								if cmd_options.debug:
+									print("Merging failed {} != {}, line={}".format(process_trigger, process_trigger_next, line))
+								output_file.write("\tend process;\n")
+								output_file.write(line)
+								continue
+						else:
+							output_file.write("\tend process;\n")
+							output_file.write(line)
+							continue
+					else:
+						output_file.write(line)
+					
+					i += 1
+					if i >= 512:
+						i = 0
+				else:
+					output_file.write(line)
+		else:
+			output_file.write(line)
+
+	input_file.close()
+	output_file.close()
+
+def remove_whitespace():
+	global cmd_options, input_file_name, salt
+	global key_sub_dict
+
+	num_process_blocks, line_start_indexes, line_stop_indexes = get_num_of_process_blocks()
+	proc_block_order = get_process_block_ordering(salt, num_process_blocks)
+
+	input_file = open(input_file_name[:-4]+"_pass4.vhd", "r")
+	output_file = open(input_file_name[:-4]+"_pass5.vhd", "w")
 
 	file_contents = input_file.read()
 	prev_char = ''
@@ -448,6 +587,8 @@ if __name__ == '__main__':
 	generate_key_sub_dictionary()
 	substitue_key_for_hashes()
 	remove_all_comments()
+	move_non_process_blocks_to_end()
 	swap_process_blocks()
+	merge_process_blocks()
 	remove_whitespace()
 	generate_encapsulation_file()
