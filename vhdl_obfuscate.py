@@ -36,11 +36,11 @@ def handle_command_line_options():
 		input_file_name = args[0]
 		salt = args[1]
 
-def generate_key_sub_dictionary():
-	global cmd_options, input_file_name, salt
+def generate_key_sub_dictionary(input_file_str):
+	global cmd_options, salt
 	global key_sub_dict, io_port_mapping
 
-	input_file = open(input_file_name, 'r')
+	input_file = open(input_file_str, 'r')
 
 	key_sub_dict = {}
 	io_port_mapping = []
@@ -97,12 +97,12 @@ def generate_key_sub_dictionary():
 
 	input_file.close()
 
-def substitue_key_for_hashes():
-	global cmd_options, input_file_name, salt
+def substitue_key_for_hashes(input_file_str, output_file_str):
+	global cmd_options, salt
 	global key_sub_dict
 
-	input_file = open(input_file_name, 'r')
-	output_file = open(input_file_name[:-4]+"_pass0.vhd", "w")
+	input_file = open(input_file_str, 'r')
+	output_file = open(output_file_str, "w")
 
 	n=0
 	while True:
@@ -152,15 +152,12 @@ def substitue_key_for_hashes():
 	input_file.close()
 	output_file.close()
 
-def remove_all_comments():
-	global cmd_options, input_file_name, salt
+def remove_all_comments(input_file_str, output_file_str):
+	global cmd_options, salt
 	global key_sub_dict
 
-	num_process_blocks, line_start_indexes, line_stop_indexes = get_num_of_process_blocks()
-	proc_block_order = get_process_block_ordering(salt, num_process_blocks)
-
-	input_file = open(input_file_name[:-4]+"_pass0.vhd", "r")
-	output_file = open(input_file_name[:-4]+"_pass1.vhd", "w")
+	input_file = open(input_file_str, "r")
+	output_file = open(output_file_str, "w")
 
 	while True:
 		line = input_file.readline()
@@ -180,15 +177,12 @@ def remove_all_comments():
 	input_file.close()
 	output_file.close()
 
-def move_non_process_blocks_to_end():
-	global cmd_options, input_file_name, salt
+def move_non_process_blocks_to_end(input_file_str, output_file_str):
+	global cmd_options, salt
 	global key_sub_dict
 
-	num_process_blocks, line_start_indexes, line_stop_indexes = get_num_of_process_blocks()
-	proc_block_order = get_process_block_ordering(salt, num_process_blocks)
-
-	input_file = open(input_file_name[:-4]+"_pass1.vhd", "r")
-	output_file = open(input_file_name[:-4]+"_pass2.vhd", "w")
+	input_file = open(input_file_str, "r")
+	output_file = open(output_file_str, "w")
 
 	non_proc_data=""
 
@@ -229,15 +223,15 @@ def move_non_process_blocks_to_end():
 	input_file.close()
 	output_file.close()
 
-def swap_process_blocks():
-	global cmd_options, input_file_name, salt
+def swap_process_blocks(input_file_str, output_file_str):
+	global cmd_options, salt
 	global key_sub_dict
 
-	num_process_blocks, line_start_indexes, line_stop_indexes = get_num_of_process_blocks()
+	num_process_blocks, line_start_indexes, line_stop_indexes = get_num_of_process_blocks(input_file_str)
 	proc_block_order = get_process_block_ordering(salt, num_process_blocks)
 
-	input_file = open(input_file_name[:-4]+"_pass2.vhd", "r")
-	output_file = open(input_file_name[:-4]+"_pass3.vhd", "w")
+	input_file = open(input_file_str, "r")
+	output_file = open(output_file_str, "w")
 	process_block=0
 	in_process_block=False
 	while True:
@@ -252,7 +246,7 @@ def swap_process_blocks():
 			if not in_process_block:
 				swap_process_block_start = line_start_indexes[proc_block_order[process_block]]
 				swap_process_block_stop = line_stop_indexes[proc_block_order[process_block]]
-				input_file2 = open(input_file_name[:-4]+"_pass2.vhd", 'r')
+				input_file2 = open(input_file_str, 'r')
 				i = 1
 				while i < swap_process_block_start:
 					input_file2.readline()
@@ -299,11 +293,11 @@ def get_process_block_ordering(salt, num_process_blocks):
 
 	return order
 
-def get_num_of_process_blocks():
-	global cmd_options, input_file_name, salt
+def get_num_of_process_blocks(input_file_str):
+	global cmd_options, salt
 	global key_sub_dict
 
-	input_file = open(input_file_name[:-4]+"_pass2.vhd", "r")
+	input_file = open(input_file_str, "r")
 
 	num_process_blocks=0
 	line_start_indexes=[]
@@ -346,15 +340,12 @@ def get_num_of_process_blocks():
 
 	return int(num_process_blocks/2), line_start_indexes, line_stop_indexes
 
-def merge_process_blocks():
-	global cmd_options, input_file_name, salt
+def merge_process_blocks(input_file_str, output_file_str):
+	global cmd_options, salt
 	global key_sub_dict
 
-	num_process_blocks, line_start_indexes, line_stop_indexes = get_num_of_process_blocks()
-	proc_block_order = get_process_block_ordering(salt, num_process_blocks)
-
-	input_file = open(input_file_name[:-4]+"_pass3.vhd", "r")
-	output_file = open(input_file_name[:-4]+"_pass4.vhd", "w")
+	input_file = open(input_file_str, "r")
+	output_file = open(output_file_str, "w")
 
 	merge_hash = hashlib.sha512(bytes("hailhydra", 'UTF-8') + bytes(salt, 'UTF-8')).hexdigest()
 
@@ -435,15 +426,69 @@ def merge_process_blocks():
 	input_file.close()
 	output_file.close()
 
-def remove_whitespace():
-	global cmd_options, input_file_name, salt
+def obfusticate_key_words(input_file_str, output_file_str):
+	global cmd_options, salt
 	global key_sub_dict
 
-	num_process_blocks, line_start_indexes, line_stop_indexes = get_num_of_process_blocks()
-	proc_block_order = get_process_block_ordering(salt, num_process_blocks)
+	input_file = open(input_file_str, "r")
+	output_file = open(output_file_str, "w")
 
-	input_file = open(input_file_name[:-4]+"_pass4.vhd", "r")
-	output_file = open(input_file_name[:-4]+"_pass5.vhd", "w")
+	keyword_hash = hashlib.sha512(bytes("r.stallman", 'UTF-8') + bytes(salt, 'UTF-8')).hexdigest()
+
+	i=0
+	after_begin=False
+	while True:
+		line = input_file.readline()
+		if line == '':
+			break
+		if len(line) >= 2:
+			if line[:2] == "--":
+				continue
+
+		if line.lower().__contains__("begin"):
+			after_begin = True
+			output_file.write(line)
+			continue
+
+		if after_begin:
+			if line.lower().__contains__("behavioral"):
+				output_file.write("\n")
+				output_file.write(line)
+				break
+
+			if line.lower().__contains__("process"):
+				if not line.lower().__contains__("end"):
+					process_trigger = line.lower().replace("process", "")
+					process_trigger = process_trigger.replace("begin", "")
+					process_trigger = process_trigger.replace("(", "")
+					process_trigger = process_trigger.replace(")", "")
+					process_trigger = process_trigger.replace("\n", "")
+					process_trigger = process_trigger.replace("\t", "")
+					process_trigger = process_trigger.replace(" ", "")
+			
+			if line.lower().__contains__("rising_edge"):
+				if int(keyword_hash[i], 16) >= 7:
+					if cmd_options.debug:
+						print("Replacing rising_edge")
+					output_file.write("\t\tif "+process_trigger+"'event and "+process_trigger+"='1' then\n")
+				else:
+					output_file.write(line)
+
+				i += 1
+				if i >= 512:
+					i = 0
+			else:
+				output_file.write(line)
+		else:
+			output_file.write(line)
+
+
+def remove_whitespace(input_file_str, output_file_str):
+	global cmd_options, salt
+	global key_sub_dict
+
+	input_file = open(input_file_str, "r")
+	output_file = open(output_file_str, "w")
 
 	file_contents = input_file.read()
 	prev_char = ''
@@ -584,11 +629,12 @@ def generate_encapsulation_file():
 
 if __name__ == '__main__':
 	handle_command_line_options()
-	generate_key_sub_dictionary()
-	substitue_key_for_hashes()
-	remove_all_comments()
-	move_non_process_blocks_to_end()
-	swap_process_blocks()
-	merge_process_blocks()
-	remove_whitespace()
+	generate_key_sub_dictionary(input_file_name)
+	substitue_key_for_hashes(input_file_name, input_file_name[:-4]+"_pass0.vhd")
+	remove_all_comments(input_file_name[:-4]+"_pass0.vhd", input_file_name[:-4]+"_pass1.vhd")
+	move_non_process_blocks_to_end(input_file_name[:-4]+"_pass1.vhd", input_file_name[:-4]+"_pass2.vhd")
+	swap_process_blocks(input_file_name[:-4]+"_pass2.vhd", input_file_name[:-4]+"_pass3.vhd")
+	merge_process_blocks(input_file_name[:-4]+"_pass3.vhd", input_file_name[:-4]+"_pass4.vhd")
+	obfusticate_key_words(input_file_name[:-4]+"_pass4.vhd", input_file_name[:-4]+"_pass5.vhd")
+	remove_whitespace(input_file_name[:-4]+"_pass5.vhd", input_file_name[:-4]+"_pass6.vhd")
 	generate_encapsulation_file()
