@@ -395,27 +395,36 @@ def merge_process_blocks(input_file_str, output_file_str):
 				output_file.write(line)
 				break
 			if not in_process_block:
-				if line.lower().__contains__("process"):
-					process_trigger = line.lower().replace("process", "")
+				if line.lower().__contains__("process") and not line.lower().__contains__("end"):
+					process_index = line.lower().index("process")
+					process_trigger = line.lower()[process_index:]
+					process_trigger = process_trigger.replace("process", "")
 					process_trigger = process_trigger.lower().replace("(", "")
 					process_trigger = process_trigger.lower().replace(")", "")
 					process_trigger = process_trigger.lower().replace("\t", "")
-					in_process_block = True
+					process_trigger = process_trigger.replace("\n", "")
+					if process_trigger.__contains__(","): # multiple triggers
+						in_process_block = False
+					else:
+						in_process_block = True
 					output_file.write(line)
 					continue
 				output_file.write(line)
 			if in_process_block:
-				if line.lower().__contains__("end process"):	
+				if in_process_block and line.lower().__contains__("end process"):	
 					in_process_block = False
 					if int(merge_hash[i], 16) >= 7: 
 						if cmd_options.debug:
 							print("Merging")
 						line = input_file.readline()
 						if line.lower().__contains__("process"):
-							process_trigger_next = line.lower().replace("process", "")
+							process_index = line.lower().index("process")
+							process_trigger_next = line.lower()[process_index:]
+							process_trigger_next = process_trigger_next.replace("process", "")
 							process_trigger_next = process_trigger_next.lower().replace("(", "")
 							process_trigger_next = process_trigger_next.lower().replace(")", "")
 							process_trigger_next = process_trigger_next.lower().replace("\t", "")
+							process_trigger_next = process_trigger_next.replace("\n", "")
 							if process_trigger == process_trigger_next:
 								while True:
 									if line.lower().__contains__("begin"):
@@ -426,7 +435,7 @@ def merge_process_blocks(input_file_str, output_file_str):
 								in_process_block = True # We are now in a process block
 							else:
 								if cmd_options.debug:
-									print("Merging failed {} != {}, line={}".format(process_trigger, process_trigger_next, line))
+									print("Merging failed {} != {}".format(process_trigger, process_trigger_next))
 								output_file.write("\tend process;\n")
 								output_file.write(line)
 								continue
@@ -662,4 +671,4 @@ if __name__ == '__main__':
 	obfusticate_key_words(input_file_name[:-4]+"_pass4.vhd", input_file_name[:-4]+"_pass5.vhd")
 	remove_whitespace(input_file_name[:-4]+"_pass5.vhd", input_file_name[:-4]+"_obf.vhd")
 	generate_encapsulation_file()
-	clean(input_file_name, 6)
+	#clean(input_file_name, 6)
