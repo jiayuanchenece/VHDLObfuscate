@@ -1,6 +1,7 @@
 from optparse import OptionParser
 import hashlib
 import sys
+import os
 
 reserved_words = { 	"access", "after", "alias", "all", "and", "architecture", "array", "assert", "attribute",
 					"begin", "block", "body", "buffer", "bus", "case", "component", "configuration", "constant",
@@ -19,15 +20,20 @@ variable_name_allowed_chars = { "_" }
 def handle_command_line_options():
 	global cmd_options, input_file_name, salt
 
-	usage_str = "vhdl_obfuscate [-d] input_file salt"
+	usage_str = "vhdl_obfuscate [-dc] input_file salt"
 
 	parser = OptionParser()
 	parser.add_option("-d", "--debug", action="store_true", dest="debug", default=False, help="enable debug messages")
+	parser.add_option("-c", "--clean", action="store_true", dest="clean", default=False, help="cleanup files and exit")
 	parser.usage = usage_str
 
 	(cmd_options, args) = parser.parse_args()
 	if cmd_options.debug:
 		print("Enabling debug mode")
+	if cmd_options.clean:
+		print("Performing cleanup")
+		clean(args[0])
+		exit()
 
 	if len(args) != 2:
 		print("Usage: {}".format(usage_str))
@@ -35,6 +41,22 @@ def handle_command_line_options():
 	else:
 		input_file_name = args[0]
 		salt = args[1]
+
+def clean(input_file_str, i_max=0):
+	
+	i=0
+	while True:
+		file_to_remove=input_file_str[:-4]+"_pass"+str(i)+".vhd"
+		if os.path.isfile(file_to_remove):
+			os.remove(file_to_remove)
+			i += 1
+		else:
+			return
+
+		if i_max != 0:
+			if i >= i_max:
+				return
+
 
 def generate_key_sub_dictionary(input_file_str):
 	global cmd_options, salt
@@ -458,7 +480,9 @@ def obfusticate_key_words(input_file_str, output_file_str):
 
 			if line.lower().__contains__("process"):
 				if not line.lower().__contains__("end"):
-					process_trigger = line.lower().replace("process", "")
+					process_index = line.lower().index("process")
+					process_trigger = line.lower()[process_index:]
+					process_trigger = process_trigger.replace("process", "")
 					process_trigger = process_trigger.replace("begin", "")
 					process_trigger = process_trigger.replace("(", "")
 					process_trigger = process_trigger.replace(")", "")
@@ -519,8 +543,8 @@ def remove_whitespace(input_file_str, output_file_str):
 			prev_char = c
 			num_chars += 1
 
-		if num_chars > 200:
-			if c == ';':
+		if num_chars > 150:
+			if (c == ';') or (c == ' ') or (c == ','):
 				output_file.write('\n')
 				num_chars = 0
 
@@ -636,5 +660,6 @@ if __name__ == '__main__':
 	swap_process_blocks(input_file_name[:-4]+"_pass2.vhd", input_file_name[:-4]+"_pass3.vhd")
 	merge_process_blocks(input_file_name[:-4]+"_pass3.vhd", input_file_name[:-4]+"_pass4.vhd")
 	obfusticate_key_words(input_file_name[:-4]+"_pass4.vhd", input_file_name[:-4]+"_pass5.vhd")
-	remove_whitespace(input_file_name[:-4]+"_pass5.vhd", input_file_name[:-4]+"_pass6.vhd")
+	remove_whitespace(input_file_name[:-4]+"_pass5.vhd", input_file_name[:-4]+"_obf.vhd")
 	generate_encapsulation_file()
+	clean(input_file_name, 6)
