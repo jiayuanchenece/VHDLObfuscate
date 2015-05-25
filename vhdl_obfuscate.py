@@ -411,7 +411,7 @@ def merge_process_blocks(input_file_str, output_file_str):
 					continue
 				output_file.write(line)
 			if in_process_block:
-				if in_process_block and line.lower().__contains__("end process"):	
+				if line.lower().__contains__("end process"):	
 					in_process_block = False
 					if int(merge_hash[i], 16) >= 7: 
 						if cmd_options.debug:
@@ -456,6 +456,106 @@ def merge_process_blocks(input_file_str, output_file_str):
 
 	input_file.close()
 	output_file.close()
+
+def split_process_blocks(input_file_str, output_file_str):
+	global cmd_options, salt
+	global key_sub_dict
+
+	input_file = open(input_file_str, "r")
+	output_file = open(output_file_str, "w")
+
+	split_hash = hashlib.sha512(bytes("snowdenidol", 'UTF-8') + bytes(salt, 'UTF-8')).hexdigest()
+
+	if cmd_options.debug:
+		print("Split hash: {}".format(split_hash))
+
+	i=0
+	after_begin=False
+	in_process_block=False
+	in_rising_edge=False
+	depth=0
+	split_lines=""
+	process_innard_list=[]
+	while True:
+		line = input_file.readline()
+		if line == '':
+			break
+		if len(line) >= 2:
+			if line[:2] == "--":
+				continue
+		if line.lower().__contains__("begin"):
+			after_begin = True
+			output_file.write(line)
+			continue
+
+		if after_begin:
+			if line.lower().__contains__("behavioral"):
+				output_file.write("\n")
+				output_file.write(line)
+				break
+
+		if not in_process_block:
+			if line.lower().__contains__("process") and not line.lower().__contains__("end"):
+				process_index = line.lower().index("process")
+				process_trigger = line.lower()[process_index:]
+				process_trigger = process_trigger.replace("process", "")
+				process_trigger = process_trigger.lower().replace("(", "")
+				process_trigger = process_trigger.lower().replace(")", "")
+				process_trigger = process_trigger.lower().replace("\t", "")
+				process_trigger = process_trigger.replace("\n", "")
+				if process_trigger.__contains__(","): # multiple triggers
+					in_process_block = False
+				else:
+					in_process_block = True
+
+				output_file.write(line)
+				continue
+			output_file.write(line)
+		
+		if in_process_block:
+			if line.lower().__contains__("rising_edge"):
+				in_rising_edge = True
+				depth = 0
+				split_lines = ""
+				output_file.write(line)
+			elif line.lower().__contains__("end process"):
+				in_process_block = False
+				output_file.write(line)
+				for splitter in process_innard_list:
+					output_file.write("\tprocess("+process_trigger+")\n")
+					output_file.write("\tbegin\n")
+					output_file.write("\t\tif rising_edge("+process_trigger+") then\n")
+					output_file.write(splitter)
+					output_file.write("\t\tend if;\n")
+					output_file.write("\tend process;\n")
+				process_innard_list = []
+			elif in_rising_edge:
+				if line.lower().__contains__("end if;"):
+					depth -= 1
+					if depth == 0:
+						split_lines += line
+						if int(split_hash[i], 16) >= 7:
+							if cmd_options.debug:
+								print("Splitting")
+							process_innard_list.append(split_lines)
+						else:
+							output_file.write(split_lines)
+						split_lines=""
+						i += 1
+						if i >= 512:
+							i = 0
+					elif depth == -1:
+						in_rising_edge = False
+						output_file.write(line)
+					else:
+						split_lines += line
+				elif line.lower().__contains__("if ") and not line.lower().__contains__("els"):
+					depth += 1
+					split_lines += line
+				elif depth >= 1:
+					split_lines += line
+				else:
+					output_file.write(line)
 
 def obfusticate_key_words(input_file_str, output_file_str):
 	global cmd_options, salt
@@ -668,7 +768,8 @@ if __name__ == '__main__':
 	move_non_process_blocks_to_end(input_file_name[:-4]+"_pass1.vhd", input_file_name[:-4]+"_pass2.vhd")
 	swap_process_blocks(input_file_name[:-4]+"_pass2.vhd", input_file_name[:-4]+"_pass3.vhd")
 	merge_process_blocks(input_file_name[:-4]+"_pass3.vhd", input_file_name[:-4]+"_pass4.vhd")
-	obfusticate_key_words(input_file_name[:-4]+"_pass4.vhd", input_file_name[:-4]+"_pass5.vhd")
-	remove_whitespace(input_file_name[:-4]+"_pass5.vhd", input_file_name[:-4]+"_obf.vhd")
+	split_process_blocks(input_file_name[:-4]+"_pass4.vhd", input_file_name[:-4]+"_pass5.vhd")
+	obfusticate_key_words(input_file_name[:-4]+"_pass5.vhd", input_file_name[:-4]+"_pass6.vhd")
+	remove_whitespace(input_file_name[:-4]+"_pass6.vhd", input_file_name[:-4]+"_obf.vhd")
 	generate_encapsulation_file()
-	#clean(input_file_name, 6)
+	clean(input_file_name, 7)
