@@ -57,6 +57,89 @@ def clean(input_file_str, i_max=0):
 			if i >= i_max:
 				return
 
+def prescan(input_file_str):
+
+	print("Performing prescan...")
+
+	input_file = open(input_file_str, 'r')
+
+	n=0
+	process_trigger_list = []
+	in_process_block = False
+	in_rising_edge = False
+	retVal=0
+	while True:
+		n += 1
+		line = input_file.readline()
+		if line == '':
+			print("[INFO] Reached EOF, number of lines: {}".format(n))
+			break
+		if len(line) >= 2 and line[:2] == "--":
+			print("[INFO] Comment line {} will be removed".format(n))
+			continue
+
+		if line.lower().__contains__("process") and not line.lower().__contains__("end"):
+			process_index = line.lower().index("process")
+			process_trigger = line.lower()[process_index:]
+			process_trigger = process_trigger.replace("process", "")
+			process_trigger = process_trigger.lower().replace("(", "")
+			process_trigger = process_trigger.lower().replace(")", "")
+			process_trigger = process_trigger.lower().replace("\t", "")
+			process_trigger = process_trigger.replace("\n", "")
+			if not process_trigger_list.__contains__(process_trigger):
+				process_trigger_list.append(process_trigger)
+
+			if process_trigger.__contains__(","):
+				print("[Warning] Process block with multiple triggers found, line {}".format(n))
+				in_process_block = False
+			else:
+				in_process_block = True
+
+		if in_process_block:
+			if line.lower().__contains__("rising_edge"):
+				in_rising_edge = True
+				depth = 0
+				depth_zero_assignments=[]
+			elif line.lower().__contains__("end process"):
+				in_process_block = False
+			elif in_rising_edge:
+				if line.lower().__contains__("end if;"):
+					depth -= 1
+					if depth == -1:
+						in_rising_edge = False
+				elif line.lower().__contains__("if ") and not line.lower().__contains__("els"):
+					depth += 1
+				elif depth == 0:
+					if line.__contains__("<="):
+						assign_index = line.index("<=")
+						assign_to = line[:assign_index]
+						assign_to = assign_to.lower().replace("\t", "")
+						assign_to = assign_to.replace("\n", "")
+						assign_to = assign_to.replace(" ", "")
+						if assign_to.__contains__("("):
+							assign_index = assign_to.index("(")
+							assign_to = assign_to[:assign_index]
+						depth_zero_assignments.append(assign_to)
+				elif depth >= 1:
+					if line.__contains__("<="):
+						assign_index = line.index("<=")
+						assign_to = line[:assign_index]
+						assign_to = assign_to.lower().replace("\t", "")
+						assign_to = assign_to.replace("\n", "")
+						assign_to = assign_to.replace(" ", "")
+						if assign_to.__contains__("("):
+							assign_index = assign_to.index("(")
+							assign_to = assign_to[:assign_index]
+						
+						if depth_zero_assignments.__contains__(assign_to):
+							print("[ERROR] Found potential duplicate assignment, line={}, variable={}, please resolve".format(n, assign_to))
+							retVal=-1
+	
+	print("[INFO] Found process triggers: {}".format(process_trigger_list))	
+	if len(process_trigger_list) > 1:
+		print("[Warning] Multiple process triggers found")
+
+	return retVal
 
 def generate_key_sub_dictionary(input_file_str):
 	global cmd_options, salt
@@ -362,14 +445,14 @@ def get_num_of_process_blocks(input_file_str):
 
 	return int(num_process_blocks/2), line_start_indexes, line_stop_indexes
 
-def merge_process_blocks(input_file_str, output_file_str):
+def merge_process_blocks(input_file_str, output_file_str, seed):
 	global cmd_options, salt
 	global key_sub_dict
 
 	input_file = open(input_file_str, "r")
 	output_file = open(output_file_str, "w")
 
-	merge_hash = hashlib.sha512(bytes("hailhydra", 'UTF-8') + bytes(salt, 'UTF-8')).hexdigest()
+	merge_hash = hashlib.sha512(bytes(seed, 'UTF-8') + bytes(salt, 'UTF-8')).hexdigest()
 
 	if cmd_options.debug:
 		print("Merge hash: {}".format(merge_hash))
@@ -457,14 +540,14 @@ def merge_process_blocks(input_file_str, output_file_str):
 	input_file.close()
 	output_file.close()
 
-def split_process_blocks(input_file_str, output_file_str):
+def split_process_blocks(input_file_str, output_file_str, seed):
 	global cmd_options, salt
 	global key_sub_dict
 
 	input_file = open(input_file_str, "r")
 	output_file = open(output_file_str, "w")
 
-	split_hash = hashlib.sha512(bytes("snowdenidol", 'UTF-8') + bytes(salt, 'UTF-8')).hexdigest()
+	split_hash = hashlib.sha512(bytes(seed, 'UTF-8') + bytes(salt, 'UTF-8')).hexdigest()
 
 	if cmd_options.debug:
 		print("Split hash: {}".format(split_hash))
@@ -762,14 +845,21 @@ def generate_encapsulation_file():
 
 if __name__ == '__main__':
 	handle_command_line_options()
+	retVal=prescan(input_file_name)
+	if retVal < 0:
+		exit()
+
 	generate_key_sub_dictionary(input_file_name)
 	substitue_key_for_hashes(input_file_name, input_file_name[:-4]+"_pass0.vhd")
 	remove_all_comments(input_file_name[:-4]+"_pass0.vhd", input_file_name[:-4]+"_pass1.vhd")
 	move_non_process_blocks_to_end(input_file_name[:-4]+"_pass1.vhd", input_file_name[:-4]+"_pass2.vhd")
 	swap_process_blocks(input_file_name[:-4]+"_pass2.vhd", input_file_name[:-4]+"_pass3.vhd")
-	merge_process_blocks(input_file_name[:-4]+"_pass3.vhd", input_file_name[:-4]+"_pass4.vhd")
-	split_process_blocks(input_file_name[:-4]+"_pass4.vhd", input_file_name[:-4]+"_pass5.vhd")
-	obfusticate_key_words(input_file_name[:-4]+"_pass5.vhd", input_file_name[:-4]+"_pass6.vhd")
-	remove_whitespace(input_file_name[:-4]+"_pass6.vhd", input_file_name[:-4]+"_obf.vhd")
+	merge_process_blocks(input_file_name[:-4]+"_pass3.vhd", input_file_name[:-4]+"_pass4.vhd", "hailhydra")
+	split_process_blocks(input_file_name[:-4]+"_pass4.vhd", input_file_name[:-4]+"_pass5.vhd", "snowden")
+	swap_process_blocks(input_file_name[:-4]+"_pass5.vhd", input_file_name[:-4]+"_pass6.vhd")
+	merge_process_blocks(input_file_name[:-4]+"_pass6.vhd", input_file_name[:-4]+"_pass7.vhd", "fuckgbush")
+	split_process_blocks(input_file_name[:-4]+"_pass7.vhd", input_file_name[:-4]+"_pass8.vhd", "caterpillareyebrows")
+	obfusticate_key_words(input_file_name[:-4]+"_pass8.vhd", input_file_name[:-4]+"_pass9.vhd")
+	remove_whitespace(input_file_name[:-4]+"_pass9.vhd", input_file_name[:-4]+"_obf.vhd")
 	generate_encapsulation_file()
-	clean(input_file_name, 7)
+	clean(input_file_name)
