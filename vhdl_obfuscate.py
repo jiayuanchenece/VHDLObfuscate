@@ -77,6 +77,12 @@ def prescan(input_file_str):
 		if len(line) >= 2 and line[:2] == "--":
 			print("[INFO] Comment line {} will be removed".format(n))
 			continue
+		if line.lower().__contains__("component"):
+			print("[WARNING] Found component definition on line {}. Please flatten modules for best obfuscation".format(n))
+			continue
+		if line.lower().__contains__("port map"):
+			print("[WARNING] Found component instantiation on line {}. Please flatten modules for best obfuscation".format(n))
+			continue
 
 		if line.lower().__contains__("process") and not line.lower().__contains__("end"):
 			process_index = line.lower().index("process")
@@ -90,7 +96,7 @@ def prescan(input_file_str):
 				process_trigger_list.append(process_trigger)
 
 			if process_trigger.__contains__(","):
-				print("[Warning] Process block with multiple triggers found, line {}".format(n))
+				print("[WARNING] Process block with multiple triggers found, line {}".format(n))
 				in_process_block = False
 			else:
 				in_process_block = True
@@ -137,7 +143,7 @@ def prescan(input_file_str):
 	
 	print("[INFO] Found process triggers: {}".format(process_trigger_list))	
 	if len(process_trigger_list) > 1:
-		print("[Warning] Multiple process triggers found")
+		print("[WARNING] Multiple process triggers found")
 
 	return retVal
 
@@ -640,6 +646,72 @@ def split_process_blocks(input_file_str, output_file_str, seed):
 				else:
 					output_file.write(line)
 
+def swap_case_internals(input_file_str, output_file_str, seed):
+	global cmd_options, salt
+	global key_sub_dict
+
+	input_file = open(input_file_str, "r")
+	output_file = open(output_file_str, "w")
+
+	swap_case_hash = hashlib.sha512(bytes(seed, 'UTF-8') + bytes(salt, 'UTF-8')).hexdigest()
+
+	if cmd_options.debug:
+		print("Split hash: {}".format(swap_case_hash))
+
+	after_begin=False
+	when_statements = []
+	while True:
+		line = input_file.readline()
+		if line.lower().__contains__("begin"):
+			after_begin = True
+			output_file.write(line)
+			continue
+
+		if after_begin:
+			if line.lower().__contains__("behavioral"):
+				output_file.write("\n")
+				output_file.write(line)
+				break
+
+			if line.lower().__contains__("case") and line.lower().__contains__("is"):
+				output_file.write(line)
+
+				when_statement=""
+				while True:
+					line = input_file.readline()
+					if line.lower().__contains__("end case"):
+						if when_statement != "":
+							when_statements.append(when_statement)
+
+						if cmd_options.debug:
+							for when_s in when_statements:
+								print("Statement:{}".format(when_s))
+
+						i=0
+						while len(when_statements) != 0:
+							index = int(swap_case_hash[i], 16)
+							index %= len(when_statements)
+
+							output_file.write(when_statements[index])
+							del when_statements[index]
+
+							i+=1
+
+						output_file.write(line)
+						break
+					else:
+						if line.lower().__contains__("when"):
+							if when_statement != "":
+								when_statements.append(when_statement)
+								when_statement=""
+						when_statement += line
+			else:
+				output_file.write(line)
+		else:
+			output_file.write(line)
+
+
+
 def obfusticate_key_words(input_file_str, output_file_str):
 	global cmd_options, salt
 	global key_sub_dict
@@ -859,7 +931,8 @@ if __name__ == '__main__':
 	swap_process_blocks(input_file_name[:-4]+"_pass5.vhd", input_file_name[:-4]+"_pass6.vhd")
 	merge_process_blocks(input_file_name[:-4]+"_pass6.vhd", input_file_name[:-4]+"_pass7.vhd", "fuckgbush")
 	split_process_blocks(input_file_name[:-4]+"_pass7.vhd", input_file_name[:-4]+"_pass8.vhd", "caterpillareyebrows")
-	obfusticate_key_words(input_file_name[:-4]+"_pass8.vhd", input_file_name[:-4]+"_pass9.vhd")
-	remove_whitespace(input_file_name[:-4]+"_pass9.vhd", input_file_name[:-4]+"_obf.vhd")
+	swap_case_internals(input_file_name[:-4]+"_pass8.vhd", input_file_name[:-4]+"_pass9.vhd", "exmachina")
+	obfusticate_key_words(input_file_name[:-4]+"_pass9.vhd", input_file_name[:-4]+"_pass10.vhd")
+	remove_whitespace(input_file_name[:-4]+"_pass10.vhd", input_file_name[:-4]+"_obf.vhd")
 	generate_encapsulation_file()
 	clean(input_file_name)
