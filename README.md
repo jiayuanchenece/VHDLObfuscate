@@ -72,3 +72,7 @@ XOR s_9356edaff716b2ba8d3d53f767d802e00f2b8e12eb19f1(0)); end if; end if; end pr
 - obfusticate_key_words : obfuscates all key words
 - remove_whitespace : removes whitespace
 - generate_encapsulation_file : generates VHDL file which encapsulates obfuscated module
+
+## Licence
+
+Licensed under the GPLv3: http://www.gnu.org/licenses/gpl-3.0.html
