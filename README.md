@@ -1,6 +1,9 @@
 # VHDLObfuscate
 Obfuscator for VHDL modules
 
+## Requires
+Python 3.4
+
 ## Usage
 ```
 vhdl_obfuscate [-dc] input_file salt
